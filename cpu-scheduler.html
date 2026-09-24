@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CPU Scheduling Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#14202e;--mute:#5b6b7c;--line:#d5dce5;--acc:#2f45c5;--accink:#fff;--good:#dff5e6;--bad:#fde4e1;--idle:#c9d1db;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1620;--card:#18222f;--ink:#e8eef5;--mute:#93a3b5;--line:#2c3a4b;--acc:#7f92ff;--accink:#0f1620;--good:#173a26;--bad:#40201d;--idle:#3a4757}}
+:root[data-theme="dark"]{--bg:#0f1620;--card:#18222f;--ink:#e8eef5;--mute:#93a3b5;--line:#2c3a4b;--acc:#7f92ff;--accink:#0f1620;--good:#173a26;--bad:#40201d;--idle:#3a4757}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:8px 0 2px;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0 0 10px}
+.sub{color:var(--mute);margin:0 0 16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.scroll{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mute);font-size:.85rem}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+td input{width:64px;text-align:right}
+button{cursor:pointer}
+button.p{background:var(--acc);color:var(--accink);border-color:var(--acc);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:12px}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mute);gap:3px}
+.gantt{display:inline-flex;padding:4px 0 22px}
+.seg{position:relative;height:44px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;border-right:2px solid var(--card)}
+.seg.idle{background:var(--idle);color:var(--mute);font-weight:400}
+.seg i{position:absolute;left:0;bottom:-20px;font-style:normal;font-size:.75rem;color:var(--mute);transform:translateX(-50%)}
+.seg i.e{left:auto;right:0;transform:translateX(50%)}
+.err{color:#c0392b;font-weight:600;margin-top:8px}
+.note{color:var(--mute);font-size:.88rem}
+tr.best td.b{background:var(--good)}tr td.w{background:var(--bad)}
+details{margin-top:6px}summary{cursor:pointer;font-weight:600}
+li{margin-bottom:6px}
+.tot td{font-weight:700;border-bottom:0}
+.seg{transition:opacity .3s}
+#bars h3{font-size:.9rem;margin:12px 0 4px}
+.bar{display:grid;grid-template-columns:minmax(90px,140px) 1fr 40px;gap:8px;align-items:center;font-size:.85rem;margin-bottom:3px}
+.bar b{height:10px;background:var(--acc);border-radius:3px;display:block}
+.bar em{font-style:normal;text-align:right}
+</style>
+</head>
+<body>
+<main>
+<h1>CPU Scheduling Simulator</h1>
+<p class="sub">FCFS, SJF, SRTF, Round Robin and Priority (non-preemptive and preemptive), with Gantt charts, metrics and comparison.</p>
+
+<section>
+<h2>1. Processes</h2>
+<div class="scroll"><table id="pt"><thead><tr><th>Process</th><th>Arrival</th><th>Burst</th><th>Priority</th><th></th></tr></thead><tbody></tbody></table></div>
+<div class="row">
+<button id="add">Add process</button><button id="clear">Clear all</button>
+<label>Test scenario<select id="scn"><option value="">Choose a scenario…</option></select></label>
+<span class="note" id="scnd" style="flex-basis:100%"></span>
+</div>
+<div class="row">
+<label>Algorithm<select id="algo">
+<option value="FCFS">FCFS</option><option value="SJF">SJF (non-preemptive)</option><option value="SRTF">SRTF (preemptive SJF)</option><option value="RR">Round Robin</option><option value="PNP">Priority (non-preemptive)</option><option value="PP">Priority (preemptive)</option></select></label>
+<label>Time quantum (RR)<input id="q" type="number" min="1" value="3" style="width:90px"></label>
+<label>Higher priority is<select id="pdir"><option value="low">the smaller number</option><option value="high">the larger number</option></select></label>
+</div>
+<div class="row"><button class="p" id="run">Run simulation</button><button class="p" id="cmp">Compare all algorithms</button></div>
+<div class="err" id="err" role="alert"></div>
+</section>
+
+<section id="res" hidden>
+<h2 id="rt">Result</h2>
+<div class="row" style="margin:0 0 6px"><button id="play">▶ Animate timeline</button><span class="note" id="stat"></span></div>
+<div class="scroll"><div class="gantt" id="g"></div></div>
+<div class="scroll"><table id="mt"><thead><tr><th>Process</th><th>AT</th><th>BT</th><th>Start</th><th>CT</th><th>TAT</th><th>WT</th><th>RT</th></tr></thead><tbody></tbody></table></div>
+<p class="note" id="util"></p>
+</section>
+
+<section id="cs" hidden>
+<h2>Comparison</h2>
+<div class="scroll"><table id="ct"><thead><tr><th>Algorithm</th><th>Avg. waiting</th><th>Avg. turnaround</th><th>Avg. response</th><th>Context switches</th></tr></thead><tbody></tbody></table></div>
+<p class="note">Green marks the lowest (best) value in each column. Context switches count every change from one process to another.</p>
+<div id="bars"></div>
+<h2 style="margin-top:14px">What the numbers show</h2>
+<ul id="why"></ul>
+</section>
+
+<section>
+<h2>Round Robin: effect of the time quantum</h2>
+<p class="note">Runs Round Robin with every quantum from 1 up to your longest burst (max 15) on the processes above.</p>
+<button class="p" id="sweep">Test quantum sizes</button>
+<div class="scroll"><table id="sw"><thead><tr><th>Quantum</th><th>Avg. waiting</th><th>Avg. turnaround</th><th>Avg. response</th><th>Context switches</th></tr></thead><tbody></tbody></table></div>
+<p class="note" id="swn"></p>
+</section>
+
+<section>
+<h2>Rules and tie-breaking</h2>
+<details open><summary>Conventions used</summary>
+<ul>
+<li>Times are whole units. CT = completion time, TAT = CT − AT, WT = TAT − BT, RT = first CPU start − AT.</li>
+<li>Priority: you choose whether the smaller or the larger number is higher priority (default: smaller number).</li>
+<li>CPU idle time is drawn as a grey "Idle" block when no process has arrived yet.</li>
+</ul></details>
+<details open><summary>Tie-breaking (applied in this order)</summary>
+<ul>
+<li><b>FCFS:</b> earliest arrival, then lower process number.</li>
+<li><b>SJF:</b> shortest burst, then earliest arrival, then lower process number.</li>
+<li><b>SRTF and preemptive Priority:</b> checked every time unit. The best value wins; on a tie the process already running keeps the CPU (no needless preemption), then earliest arrival, then lower process number.</li>
+<li><b>Priority (non-preemptive):</b> best priority, then earliest arrival, then lower process number.</li>
+<li><b>Round Robin:</b> ready queue is FIFO. A process arriving at the same moment a quantum ends is queued <i>before</i> the preempted process goes to the back.</li>
+</ul></details>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const NAMES={FCFS:"FCFS",SJF:"SJF",SRTF:"SRTF",RR:"Round Robin",PNP:"Priority (non-preemptive)",PP:"Priority (preemptive)"};
+const SAMPLE=[[0,8,2],[1,4,1],[2,2,3],[3,5,2]];
+const tb=$("pt").tBody;
+function addRow(a=0,b=1,p=1){
+  const tr=tb.insertRow();
+  tr.innerHTML='<td></td><td><input type="number" min="0" value="'+a+'" aria-label="Arrival"></td><td><input type="number" min="1" value="'+b+'" aria-label="Burst"></td><td><input type="number" value="'+p+'" aria-label="Priority"></td><td><button aria-label="Remove">✕</button></td>';
+  tr.cells[4].firstChild.onclick=()=>{tr.remove();renum()};renum();
+}
+function renum(){[...tb.rows].forEach((r,i)=>r.cells[0].textContent="P"+(i+1))}
+function load(d){tb.innerHTML="";d.forEach(x=>addRow(...x))}
+$("add").onclick=()=>addRow(0,1,1);
+const SCN={
+"Spec sample (4 processes)":[SAMPLE,"The table from the project sheet."],
+"CPU idle gaps":[[[3,2,1],[4,3,2],[12,4,1],[13,1,3],[20,2,2]],"Nothing has arrived at t=0, and there are gaps between arrivals. They show as grey Idle blocks."],
+"Ties: equal burst and priority":[[[0,4,2],[0,4,2],[1,4,1],[2,4,1],[3,2,2]],"Same arrival, burst and priority values force the tie-breaking rules to decide."],
+"Convoy effect":[[[0,20,3],[1,2,1],[2,3,2],[3,1,1],[4,2,2]],"One long job arrives first. Compare how badly FCFS treats the short jobs behind it."],
+"Preemption stress (5 processes)":[[[0,7,3],[2,4,1],[4,1,2],[5,4,1],[6,3,4]],"Newcomers interrupt the running process in SRTF and preemptive Priority."]};
+Object.keys(SCN).forEach(k=>$("scn").add(new Option(k,k)));
+$("scn").onchange=e=>{const c=SCN[e.target.value];if(c){load(c[0]);$("scnd").textContent=c[1]}};
+$("clear").onclick=()=>{tb.innerHTML="";$("res").hidden=$("cs").hidden=true};
+load(SAMPLE);
+
+function read(){
+  const ps=[...tb.rows].map((r,i)=>({id:i,name:"P"+(i+1),at:+r.cells[1].firstChild.value,bt:+r.cells[2].firstChild.value,pr:+r.cells[3].firstChild.value,rem:0}));
+  if(!ps.length)throw"Add at least one process.";
+  for(const p of ps){
+    if(!Number.isInteger(p.at)||p.at<0)throw p.name+": arrival must be a whole number ≥ 0.";
+    if(!Number.isInteger(p.bt)||p.bt<1)throw p.name+": burst must be a whole number ≥ 1.";
+    if(!Number.isInteger(p.pr))throw p.name+": priority must be a whole number.";
+  }
+  return ps;
+}
+const cmpKeys=(a,b)=>{for(let i=0;i<a.length;i++)if(a[i]!==b[i])return a[i]-b[i];return 0};
+function pushSeg(g,n,s,e){const l=g[g.length-1];if(l&&l.n===n&&l.e===s)l.e=e;else g.push({n,s,e})}
+
+function simulate(src,algo,q,dir){
+  const ps=src.map(p=>({...p,rem:p.bt,start:null,ct:null}));
+  const g=[];const sgn=dir==="low"?1:-1;let t=0,done=0;const n=ps.length;
+  if(algo==="RR"){
+    const order=[...ps].sort((a,b)=>a.at-b.at||a.id-b.id);let ai=0;const Q=[];
+    const admit=()=>{while(ai<n&&order[ai].at<=t)Q.push(order[ai++])};
+    while(done<n){
+      admit();
+      if(!Q.length){const nt=order[ai].at;pushSeg(g,"Idle",t,nt);t=nt;continue}
+      const p=Q.shift();if(p.start===null)p.start=t;
+      const run=Math.min(q,p.rem);pushSeg(g,p.name,t,t+run);t+=run;p.rem-=run;admit();
+      if(p.rem>0)Q.push(p);else{p.ct=t;done++}
+    }
+  }else if(algo==="FCFS"||algo==="SJF"||algo==="PNP"){
+    const key=p=>algo==="FCFS"?[p.at,p.id]:algo==="SJF"?[p.bt,p.at,p.id]:[sgn*p.pr,p.at,p.id];
+    while(done<n){
+      const av=ps.filter(p=>p.ct===null&&p.at<=t);
+      if(!av.length){const nt=Math.min(...ps.filter(p=>p.ct===null).map(p=>p.at));pushSeg(g,"Idle",t,nt);t=nt;continue}
+      av.sort((a,b)=>cmpKeys(key(a),key(b)));const p=av[0];
+      p.start=t;pushSeg(g,p.name,t,t+p.bt);t+=p.bt;p.rem=0;p.ct=t;done++;
+    }
+  }else{ // SRTF or PP: decide every time unit
+    let cur=null;
+    while(done<n){
+      const av=ps.filter(p=>p.ct===null&&p.at<=t);
+      if(!av.length){const nt=Math.min(...ps.filter(p=>p.ct===null).map(p=>p.at));pushSeg(g,"Idle",t,nt);t=nt;cur=null;continue}
+      const key=p=>[algo==="SRTF"?p.rem:sgn*p.pr,p===cur?0:1,p.at,p.id];
+      av.sort((a,b)=>cmpKeys(key(a),key(b)));const p=av[0];cur=p;
+      if(p.start===null)p.start=t;
+      pushSeg(g,p.name,t,t+1);t++;p.rem--;
+      if(p.rem===0){p.ct=t;done++;cur=null}
+    }
+  }
+  ps.forEach(p=>{p.tat=p.ct-p.at;p.wt=p.tat-p.bt;p.rt=p.start-p.at});
+  const avg=k=>ps.reduce((s,p)=>s+p[k],0)/n;
+  const busy=ps.reduce((s,p)=>s+p.bt,0);
+  const w=g.filter(s=>s.n!=="Idle");let cs=0;for(let i=1;i<w.length;i++)if(w[i].s===w[i-1].e)cs++;
+  return{ps,g,cs,wt:avg("wt"),tat:avg("tat"),rt:avg("rt"),end:t,util:busy/(t-Math.min(...ps.map(p=>p.at)))*100};
+}
+
+const col=n=>{const i=+n.slice(1)-1;return"hsl("+(i*67%360)+",55%,38%)"};
+const f=x=>Number.isInteger(x)?String(x):x.toFixed(2);
+let show=function(r,title){
+  $("rt").textContent=title;
+  const g=$("g");g.innerHTML="";
+  r.g.forEach((s,i)=>{
+    const d=document.createElement("div");d.className="seg"+(s.n==="Idle"?" idle":"");
+    d.style.width=Math.max(38,(s.e-s.s)*24)+"px";
+    if(s.n!=="Idle")d.style.background=col(s.n);
+    d.innerHTML=s.n+'<i>'+s.s+'</i>'+(i===r.g.length-1?'<i class="e">'+s.e+'</i>':'');
+    g.appendChild(d);
+  });
+  const m=$("mt").tBodies[0];m.innerHTML="";
+  r.ps.forEach(p=>m.insertRow().innerHTML="<td>"+p.name+"</td><td>"+p.at+"</td><td>"+p.bt+"</td><td>"+p.start+"</td><td>"+p.ct+"</td><td>"+p.tat+"</td><td>"+p.wt+"</td><td>"+p.rt+"</td>");
+  m.insertRow().className="tot";m.lastChild.innerHTML="<td>Average</td><td></td><td></td><td></td><td></td><td>"+f(r.tat)+"</td><td>"+f(r.wt)+"</td><td>"+f(r.rt)+"</td>";
+  $("util").textContent="CPU utilization: "+f(r.util)+"% · context switches: "+r.cs+" · finished at t = "+r.end;
+  $("res").hidden=false;
+}
+function params(){
+  const ps=read(),q=+$("q").value;
+  if(!Number.isInteger(q)||q<1)throw"Time quantum must be a whole number ≥ 1.";
+  return[ps,q,$("pdir").value];
+}
+function guard(fn){$("err").textContent="";try{fn()}catch(e){$("err").textContent=typeof e==="string"?e:"Something went wrong: "+e.message}}
+$("run").onclick=()=>guard(()=>{
+  const[ps,q,d]=params(),a=$("algo").value;
+  show(simulate(ps,a,q,d),NAMES[a]+(a==="RR"?" (quantum "+q+")":"")+(a[0]==="P"?" — "+(d==="low"?"smaller":"larger")+" number = higher priority":""));
+  $("res").scrollIntoView({behavior:"smooth"});
+});
+$("cmp").onclick=()=>guard(()=>{
+  const[ps,q,d]=params();
+  const R=Object.keys(NAMES).map(k=>({k,r:simulate(ps,k,q,d)}));
+  const tb=$("ct").tBodies[0];tb.innerHTML="";
+  const best=m=>Math.min(...R.map(x=>x.r[m]));
+  const worst=m=>Math.max(...R.map(x=>x.r[m]));
+  R.forEach(x=>{const tr=tb.insertRow();tr.insertCell().textContent=NAMES[x.k]+(x.k==="RR"?" (q="+q+")":"");
+    ["wt","tat","rt"].forEach(m=>{const c=tr.insertCell();c.textContent=f(x.r[m]);
+      if(x.r[m]===best(m))c.className="b";else if(x.r[m]===worst(m)&&best(m)!==worst(m))c.className="w";});
+  });
+  [...tb.rows].forEach(r=>{[...r.cells].forEach(c=>{if(c.className==="b")c.style.background="var(--good)";if(c.className==="w")c.style.background="var(--bad)"})});
+  [...tb.rows].forEach((r,i)=>r.insertCell().textContent=R[i].r.cs);
+  $("bars").innerHTML=[["wt","Average waiting time"],["tat","Average turnaround time"],["rt","Average response time"]].map(([m,t])=>{const mx=worst(m)||1;return"<h3>"+t+"</h3>"+R.map(x=>'<div class="bar"><span>'+NAMES[x.k]+'</span><b style="width:'+(x.r[m]/mx*100)+'%"></b><em>'+f(x.r[m])+'</em></div>').join("")}).join("");
+  const nm=m=>R.filter(x=>x.r[m]===best(m)).map(x=>NAMES[x.k]).join(" / ");
+  const get=k=>R.find(x=>x.k===k).r;
+  const L=[];
+  L.push("Lowest average waiting time: <b>"+nm("wt")+"</b> ("+f(best("wt"))+"). SRTF and SJF favour short jobs, so they usually minimise waiting; SRTF is provably optimal for average waiting time when arrivals are known.");
+  L.push("Lowest average response time: <b>"+nm("rt")+"</b> ("+f(best("rt"))+"). Round Robin gives every process the CPU within one cycle of the queue, so it tends to answer first even when its waiting time is higher.");
+  const fc=get("FCFS"),sj=get("SRTF");
+  L.push("FCFS averages "+f(fc.wt)+" waiting vs "+f(sj.wt)+" for SRTF. "+(fc.wt>sj.wt?"Long jobs at the front of the queue delay short ones behind them (the convoy effect).":"With this workload the arrival order was already favourable."));
+  L.push("Priority scheduling optimises importance, not speed: its waiting time ("+f(get("PNP").wt)+" non-preemptive, "+f(get("PP").wt)+" preemptive) depends on how priorities line up with burst lengths, and low-priority processes can starve.");
+  L.push("Round Robin with quantum "+q+" has "+f(get("RR").wt)+" average waiting. A very large quantum makes it behave like FCFS; a very small one adds context-switch overhead (not modelled here).");
+  $("why").innerHTML=L.map(x=>"<li>"+x+"</li>").join("");
+  $("cs").hidden=false;$("cs").scrollIntoView({behavior:"smooth"});
+});
+window._g=null;let timer;
+const _show=show;show=(r,t)=>{window._g=r;clearTimeout(timer);$("stat").textContent="";_show(r,t)};
+$("play").onclick=()=>{const r=window._g;if(!r)return;clearTimeout(timer);
+  const segs=[...$("g").children];segs.forEach(x=>x.style.opacity=.15);let i=0;
+  const step=()=>{if(i>=segs.length){$("stat").textContent="Done at t = "+r.end;return}
+    const s=r.g[i];segs[i].style.opacity=1;
+    $("stat").textContent="t = "+s.s+" to "+s.e+": "+(s.n==="Idle"?"CPU idle":s.n+" runs");
+    i++;timer=setTimeout(step,Math.max(500,(s.e-s.s)*250))};step()};
+$("sweep").onclick=()=>guard(()=>{const[ps,,d]=params();const b=$("sw").tBodies[0];b.innerHTML="";
+  const mx=Math.min(15,Math.max(...ps.map(p=>p.bt)));let bw=1,bv=1e9;
+  for(let q=1;q<=mx;q++){const r=simulate(ps,"RR",q,d);if(r.wt<bv){bv=r.wt;bw=q}
+    b.insertRow().innerHTML="<td>"+q+"</td><td>"+f(r.wt)+"</td><td>"+f(r.tat)+"</td><td>"+f(r.rt)+"</td><td>"+r.cs+"</td>"}
+  $("swn").textContent="Lowest average waiting time at quantum "+bw+". Small quantums give fast responses but many context switches; once the quantum reaches the longest burst, Round Robin behaves like FCFS."});
+const save=()=>{try{localStorage.setItem("cpusim",JSON.stringify([...tb.rows].map(r=>[+r.cells[1].firstChild.value,+r.cells[2].firstChild.value,+r.cells[3].firstChild.value])))}catch(e){}};
+["run","cmp","sweep"].forEach(id=>$(id).addEventListener("click",save));
+try{const sv=JSON.parse(localStorage.getItem("cpusim"));if(Array.isArray(sv)&&sv.length)load(sv)}catch(e){}
+</script>
+</body>
+</html>
