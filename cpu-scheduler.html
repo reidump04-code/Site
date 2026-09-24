@@ -46,6 +46,8 @@ li{margin-bottom:6px}
 .bar{display:grid;grid-template-columns:minmax(90px,140px) 1fr 40px;gap:8px;align-items:center;font-size:.85rem;margin-bottom:3px}
 .bar b{height:10px;background:var(--acc);border-radius:3px;display:block}
 .bar em{font-style:normal;text-align:right}
+#allg h3{font-size:.9rem;margin:12px 0 0}
+#log{margin:8px 0 0;padding-left:20px}
 </style>
 </head>
 <body>
@@ -57,7 +59,7 @@ li{margin-bottom:6px}
 <h2>1. Processes</h2>
 <div class="scroll"><table id="pt"><thead><tr><th>Process</th><th>Arrival</th><th>Burst</th><th>Priority</th><th></th></tr></thead><tbody></tbody></table></div>
 <div class="row">
-<button id="add">Add process</button><button id="clear">Clear all</button>
+<button id="add">Add process</button><button id="rand">Random workload</button><button id="clear">Clear all</button>
 <label>Test scenario<select id="scn"><option value="">Choose a scenario…</option></select></label>
 <span class="note" id="scnd" style="flex-basis:100%"></span>
 </div>
@@ -77,6 +79,7 @@ li{margin-bottom:6px}
 <div class="scroll"><div class="gantt" id="g"></div></div>
 <div class="scroll"><table id="mt"><thead><tr><th>Process</th><th>AT</th><th>BT</th><th>Start</th><th>CT</th><th>TAT</th><th>WT</th><th>RT</th></tr></thead><tbody></tbody></table></div>
 <p class="note" id="util"></p>
+<details><summary>Why this schedule? (decision log)</summary><ul id="log"></ul></details>
 </section>
 
 <section id="cs" hidden>
@@ -84,8 +87,19 @@ li{margin-bottom:6px}
 <div class="scroll"><table id="ct"><thead><tr><th>Algorithm</th><th>Avg. waiting</th><th>Avg. turnaround</th><th>Avg. response</th><th>Context switches</th></tr></thead><tbody></tbody></table></div>
 <p class="note">Green marks the lowest (best) value in each column. Context switches count every change from one process to another.</p>
 <div id="bars"></div>
+<h2 style="margin-top:14px">Gantt chart of every algorithm</h2>
+<div id="allg"></div>
 <h2 style="margin-top:14px">What the numbers show</h2>
 <ul id="why"></ul>
+</section>
+
+<section>
+<h2>Practice mode</h2>
+<p class="note">Uses the processes and algorithm selected above. Work out the answer by hand from the Gantt chart, then check it. Good preparation for the instructor's questions.</p>
+<button class="p" id="qnew">New question</button>
+<p id="qtext"></p>
+<div class="row" style="margin-top:0"><label>Your answer<input id="qa" type="number" step="any" style="width:110px"></label><button id="qchk">Check answer</button></div>
+<p id="qres" role="status"></p>
 </section>
 
 <section>
@@ -189,7 +203,7 @@ function simulate(src,algo,q,dir){
   const avg=k=>ps.reduce((s,p)=>s+p[k],0)/n;
   const busy=ps.reduce((s,p)=>s+p.bt,0);
   const w=g.filter(s=>s.n!=="Idle");let cs=0;for(let i=1;i<w.length;i++)if(w[i].s===w[i-1].e)cs++;
-  return{ps,g,cs,wt:avg("wt"),tat:avg("tat"),rt:avg("rt"),end:t,util:busy/(t-Math.min(...ps.map(p=>p.at)))*100};
+  return{ps,g,cs,algo,dir,wt:avg("wt"),tat:avg("tat"),rt:avg("rt"),end:t,util:busy/(t-Math.min(...ps.map(p=>p.at)))*100};
 }
 
 const col=n=>{const i=+n.slice(1)-1;return"hsl("+(i*67%360)+",55%,38%)"};
@@ -208,6 +222,7 @@ let show=function(r,title){
   r.ps.forEach(p=>m.insertRow().innerHTML="<td>"+p.name+"</td><td>"+p.at+"</td><td>"+p.bt+"</td><td>"+p.start+"</td><td>"+p.ct+"</td><td>"+p.tat+"</td><td>"+p.wt+"</td><td>"+p.rt+"</td>");
   m.insertRow().className="tot";m.lastChild.innerHTML="<td>Average</td><td></td><td></td><td></td><td></td><td>"+f(r.tat)+"</td><td>"+f(r.wt)+"</td><td>"+f(r.rt)+"</td>";
   $("util").textContent="CPU utilization: "+f(r.util)+"% · context switches: "+r.cs+" · finished at t = "+r.end;
+  $("log").innerHTML=explain(r).map(x=>"<li>"+x+"</li>").join("");
   $("res").hidden=false;
 }
 function params(){
@@ -233,6 +248,7 @@ $("cmp").onclick=()=>guard(()=>{
   });
   [...tb.rows].forEach(r=>{[...r.cells].forEach(c=>{if(c.className==="b")c.style.background="var(--good)";if(c.className==="w")c.style.background="var(--bad)"})});
   [...tb.rows].forEach((r,i)=>r.insertCell().textContent=R[i].r.cs);
+  $("allg").innerHTML=R.map(x=>"<h3>"+NAMES[x.k]+"</h3><div class='scroll'>"+ganttHTML(x.r)+"</div>").join("");
   $("bars").innerHTML=[["wt","Average waiting time"],["tat","Average turnaround time"],["rt","Average response time"]].map(([m,t])=>{const mx=worst(m)||1;return"<h3>"+t+"</h3>"+R.map(x=>'<div class="bar"><span>'+NAMES[x.k]+'</span><b style="width:'+(x.r[m]/mx*100)+'%"></b><em>'+f(x.r[m])+'</em></div>').join("")}).join("");
   const nm=m=>R.filter(x=>x.r[m]===best(m)).map(x=>NAMES[x.k]).join(" / ");
   const get=k=>R.find(x=>x.k===k).r;
@@ -262,6 +278,26 @@ $("sweep").onclick=()=>guard(()=>{const[ps,,d]=params();const b=$("sw").tBodies[
 const save=()=>{try{localStorage.setItem("cpusim",JSON.stringify([...tb.rows].map(r=>[+r.cells[1].firstChild.value,+r.cells[2].firstChild.value,+r.cells[3].firstChild.value])))}catch(e){}};
 ["run","cmp","sweep"].forEach(id=>$(id).addEventListener("click",save));
 try{const sv=JSON.parse(localStorage.getItem("cpusim"));if(Array.isArray(sv)&&sv.length)load(sv)}catch(e){}
+function ganttHTML(r){return'<div class="gantt">'+r.g.map((s,i)=>'<div class="seg'+(s.n==="Idle"?" idle":"")+'" style="width:'+Math.max(38,(s.e-s.s)*24)+'px'+(s.n==="Idle"?"":";background:"+col(s.n))+'">'+s.n+'<i>'+s.s+'</i>'+(i===r.g.length-1?'<i class="e">'+s.e+'</i>':'')+'</div>').join("")+'</div>'}
+function rule(a,d){const b=d==="low"?"smallest":"largest";return{FCFS:"earliest arrival",SJF:"shortest burst",SRTF:"shortest remaining time",RR:"front of the FIFO queue (runs up to one quantum)",PNP:"best priority ("+b+" number)",PP:"best priority ("+b+" number), preempting when a better one arrives"}[a]}
+function explain(r){return r.g.map(s=>{
+  if(s.n==="Idle")return"t="+s.s+": no process has arrived yet, so the CPU idles until t="+s.e+".";
+  const ex=n=>r.g.filter(x=>x.n===n&&x.e<=s.s).reduce((a,x)=>a+x.e-x.s,0);
+  const w=r.ps.filter(p=>p.name!==s.n&&p.at<=s.s&&p.bt-ex(p.name)>0).map(p=>p.name+" (remaining "+(p.bt-ex(p.name))+")");
+  return"t="+s.s+": "+s.n+" runs until t="+s.e+", chosen for "+rule(r.algo,r.dir)+(w.length?". Waiting: "+w.join(", ")+".":". Nobody else is waiting.")})}
+$("rand").onclick=()=>{const n=5+Math.floor(Math.random()*2),i=k=>1+Math.floor(Math.random()*k);
+  load(Array.from({length:n},()=>[Math.floor(Math.random()*10),i(9),i(4)]));$("scnd").textContent="Random workload. Look for the ties and idle gaps it happens to create."};
+let qz=null;
+$("qnew").onclick=()=>guard(()=>{const[ps,q,d]=params(),a=$("algo").value,r=simulate(ps,a,q,d);
+  let m=["ct","tat","wt","rt"][Math.floor(Math.random()*4)];
+  const L={ct:"completion time",tat:"turnaround time",wt:"waiting time",rt:"response time"};
+  if(Math.random()<.3){if(m==="ct")m="tat";qz={v:r[m],t:"the average "+L[m]+" of all processes"}}
+  else{const p=r.ps[Math.floor(Math.random()*r.ps.length)];qz={v:p[m],t:"the "+L[m]+" of "+p.name}}
+  $("qtext").textContent="With "+NAMES[a]+(a==="RR"?" (quantum "+q+")":"")+(a[0]==="P"?", where the "+(d==="low"?"smaller":"larger")+" number is higher priority":"")+": what is "+qz.t+"?";
+  $("qa").value="";$("qres").textContent="Tip: press Run simulation above to see the Gantt chart after you answer."});
+$("qchk").onclick=()=>{if(!qz){$("qres").textContent="Press New question first.";return}
+  const x=parseFloat($("qa").value);if(isNaN(x)){$("qres").textContent="Type a number first.";return}
+  $("qres").textContent=Math.abs(x-qz.v)<0.01?"Correct.":"Not quite. The answer is "+f(qz.v)+". Recall: TAT = CT − AT, WT = TAT − BT, RT = first start − AT."};
 </script>
 </body>
 </html>
